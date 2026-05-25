@@ -26,13 +26,13 @@ ADD ./mkdocs.yml .
 ADD ./docs ./docs
 RUN make docs-build
 
-# web
+# web deps (separate ADD so the slow `npm ci` layer caches on package.json)
 ADD ./web/package.json ./web/package-lock.json ./web/
 RUN --mount=type=cache,target=/root/.npm make web-deps
-ADD ./web ./web
-RUN make web-build
 
-# cli & server
+# cli & server (must come BEFORE web-build: the `ADD ./server ./server` here
+# would otherwise clobber server/site/, which web-build writes into, leaving
+# the embed.FS empty and producing a binary that 404s on /static/*, /sw.js)
 ADD go.mod go.sum main.go ./
 ADD ./client ./client
 ADD ./cmd ./cmd
@@ -49,6 +49,11 @@ ADD ./attachment ./attachment
 ADD ./mail ./mail
 ADD ./s3 ./s3
 ADD ./tools ./tools
+
+# web build — must run AFTER ./server is in place so server/site/ survives
+ADD ./web ./web
+RUN make web-build
+
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build make VERSION=$VERSION COMMIT=$COMMIT cli-linux-server
 
 FROM alpine
